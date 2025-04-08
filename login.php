@@ -1,6 +1,11 @@
 <?php
+// Include the database class for PDO connection
+require '../database/database.php'; // Adjust the path if needed
+
 // Start session to track user login
 session_start();
+
+//PROBABLY REMOVE THIS AND ADD SESSION_DESTROY FOR WHEN INVALID INFO IS ENTERED 
 
 // Check if the user is already logged in
 if (isset($_SESSION['user_id'])) {
@@ -8,18 +13,8 @@ if (isset($_SESSION['user_id'])) {
     exit();
 }
 
-// Database connection
-$servername = "localhost";
-$username = "root";  // Your DB username
-$password = "";      // Your DB password
-$dbname = "cis355"; // Your database name
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-// Check connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+// Get the PDO connection from the Database class
+$conn = Database::connect();
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // Retrieve email and password from form
@@ -32,16 +27,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         exit();
     }
 
-    // Check if the email exists in the database
-    $sql = "SELECT id, pwd_hash, pwd_salt FROM iss_persons WHERE email = ?";
+    // Prepare and execute the query to check if the email exists
+    $sql = "SELECT id, pwd_hash, pwd_salt, `admin` FROM iss_persons WHERE email = ?";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("s", $email);
-    $stmt->execute();
-    $stmt->store_result();
-    
-    if ($stmt->num_rows > 0) {
-        $stmt->bind_result($user_id, $stored_hash, $stored_salt);
-        $stmt->fetch();
+    $stmt->execute([$email]);
+
+    // Check if any user was found with the provided email
+    if ($stmt->rowCount() > 0) {
+        // Fetch the result
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        $user_id = $user['id'];
+        $stored_hash = $user['pwd_hash'];
+        $stored_salt = $user['pwd_salt'];
+        $fname = $user['fname'];
+        $lname = $user['lname'];
+        $admin = $user['admin'];
 
         // Generate the MD5 hash with the salt
         $hashed_password = md5($password . $stored_salt);
@@ -50,6 +50,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if ($hashed_password == $stored_hash) {
             // Password is correct, set session and redirect to dashboard
             $_SESSION['user_id'] = $user_id;
+            // $_SESSION['user_name'] = $fname . $lname;
+            // $_SESSION['email'] = $email;
+            $_SESSION['admin'] = $admin;
             header("Location: issue_list.php");
             exit();
         } else {
@@ -58,11 +61,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     } else {
         echo "No user found with that email!";
     }
-
-    $stmt->close();
 }
 
-$conn->close();
+// Disconnect from the database
+Database::disconnect();
 ?>
 
 <!DOCTYPE html>
