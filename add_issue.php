@@ -76,12 +76,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_issue']))
     $per_id = $_POST['per_id']; // Get the selected person ID from the dropdown
     // $newFileName is PDF attachment
     // $attachmentPath is entire path
-    $pdf_attachment = $_POST['pdf_attachment'];
+  
 
-    // Insert new issue into the database
-    $conn->query("INSERT INTO iss_issues (short_description, long_description, open_date, close_date, priority, org, project, per_id, pdf_attachment) 
-                  VALUES ('$short_description', '$long_description', '$open_date', '$close_date', '$priority', '$org', '$project', '$per_id', '$newFileName')");
+// Prepare the SQL statement
+$stmt = $conn->prepare("INSERT INTO iss_issues 
+    (short_description, long_description, open_date, close_date, priority, org, project, per_id, pdf_attachment) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
+// Bind parameters (s = string, i = integer — adjust as needed)
+$stmt->bind_param("sssssssis", 
+    $short_description, 
+    $long_description, 
+    $open_date, 
+    $close_date, 
+    $priority, 
+    $org, 
+    $project, 
+    $per_id, 
+    $newFileName
+);
+
+// Execute the statement
+$stmt->execute();
+
+// Close the statement
+$stmt->close();
     // Redirect back to the issue list page after submitting the form
     header("Location: issue_list.php");
     exit();

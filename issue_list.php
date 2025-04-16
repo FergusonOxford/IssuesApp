@@ -6,6 +6,8 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
+require '../database/database.php';
+
 $servername = "localhost";
 $username = "root"; // Update with your MySQL username
 $password = ""; // Update with your MySQL password
@@ -63,7 +65,76 @@ if (isset($_GET['delete_comment_id'])) {
 }
 
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_issue'])) 
+{
+
+    $delete_issue_id = $_POST['id'];
+
+ // this is for deleting an issue will have to work on
+ if($_SESSION['admin'] != 'Y' && $_SESSION['user_id'] != $delete_issue_id)
+ {
+    header("Location: issue_list.php");
+   exit();
+
+ }
+
+   
+    $stmt = $conn->prepare("DELETE FROM iss_issues WHERE id = ?");
+    $stmt->bind_param("i", $delete_issue_id);
+     // Execute the query
+     $stmt->execute();
+
+     // Close the prepared statement
+     $stmt->close();
+    header("Location: issue_list.php");
+    exit();
+
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_issue'])) {
+    
+    
+    if(isset($_FILES['pdf_attachment']))
+    {
+        $fileTmpPath = $_FILES['pdf_attachment']['tmp_name'];
+        $fileName = $_FILES['pdf_attachment']['name'];
+        $fileSize = $_FILES['pdf_attachment']['size'];
+        $fileType = $_FILES['pdf_attachment']['type'];
+        $fileNameCmps = explode(".", $fileName);
+        $fileExtension = strtolower(end($fileNameCmps));
+
+        if($fileExtension !== 'pdf')
+        {
+            die("Only PDF files allowed");
+
+        }
+
+        if($fileSize > 2 * 1024 * 1024)
+        {
+            die("File size exceeds 2MB limit");
+        }
+        $newFileName = MD5(time() . $fileName) . "." . $fileExtension;
+        $uploadFileDir = './uploads/';
+        $dest_path = $uploadFileDir.$newFileName;
+
+        #if no exist create dir 
+        if(!is_dir($uploadFileDir))
+        {
+            #files directory, permissions, idk
+            mkdir($uploadFileDir, 0755, true);
+        }
+
+        if(move_uploaded_file($fileTmpPath, $dest_path))
+        {
+                $attachmentPath = $dest_path;
+
+        }
+        else
+        {
+            die("error moving file");
+        }
+    }
+    
     // Get form data
     $id = $_POST['id'];
     $short_description = $_POST['short_description'];
@@ -75,19 +146,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_issue'])) {
     $close_date = $_POST['close_date'];
     $assigned_person = $_POST['assigned_person'];
  
+ 
 
-// this is for updating an issue will have to work on
-if($_SESSION['admin'] != 'Y' && $_SESSION['user_id'] != $assigned_person)
-{
-    header("Location: issue_list.php");
-    exit();
+    // this is for updating an issue will have to work on
+    if($_SESSION['admin'] != 'Y' && $_SESSION['user_id'] != $assigned_person)
+    {
+       header("Location: issue_list.php");
+      exit();
 
-}
+    }
 
 
     // Update SQL query
-    $stmt = $conn->prepare("UPDATE iss_issues SET short_description = ?, long_description = ?, priority = ?, org = ?, project = ?, open_date = ?, close_date = ?, per_id = ? WHERE id = ?");
-    $stmt->bind_param("ssssssssi", $short_description, $long_description, $priority, $org, $project, $open_date, $close_date, $assigned_person, $id);
+    $stmt = $conn->prepare("UPDATE iss_issues SET short_description = ?, long_description = ?, priority = ?, org = ?, project = ?, open_date = ?, close_date = ?, per_id = ?, pdf_attachment = ? WHERE id = ?");
+    $stmt->bind_param("sssssssssi", $short_description, $long_description, $priority, $org, $project, $open_date, $close_date, $assigned_person, $newFileName, $id);
 
     // Execute the query
     if ($stmt->execute()) {
@@ -344,7 +416,7 @@ INNER JOIN iss_persons ON iss_issues.per_id = iss_persons.id;
                     <!-- PDF Attachment -->
                     <div class="form-group">
                         <label for="pdf_attachment">PDF Attachment:</label>
-                        <input type="file" class="form-control" name="pdf_attachment">
+                        <input type="file" class="form-control" name="pdf_attachment", value="<?php echo htmlspecialchars($row['pdf_attachment'])?>">
                         <?php if ($row['pdf_attachment']): ?>
                             <p>Current PDF: <a href="uploads/<?php echo htmlspecialchars($row['pdf_attachment']); ?>" target="_blank">View Current PDF</a></p>
                         <?php endif; ?>
@@ -373,9 +445,9 @@ INNER JOIN iss_persons ON iss_issues.per_id = iss_persons.id;
                             <p>Are you sure you want to delete this issue?</p>
                         </div>
                         <div class="modal-footer">
-                            <form action="delete_person.php" method="POST">
+                            <form action="issue_list.php" method="POST">
                                 <input type="hidden" name="id" value="<?php echo $row['id']; ?>">
-                                <button type="submit" class="btn btn-danger">Delete</button>
+                                <button type="submit" name="delete_issue" class="btn btn-danger">Delete</button>
                                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                             </form>
                         </div>

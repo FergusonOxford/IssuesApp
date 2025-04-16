@@ -85,5 +85,7 @@ Database::disconnect();
 
         <input type="submit" value="Login">
     </form>
+
+    <p>Don't have an account? <a href="register.php"><button class="btn btn-primary">Register here</button></a></p>
 </body>
 </html>

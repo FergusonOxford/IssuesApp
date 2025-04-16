@@ -19,6 +19,87 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_person'])) 
+{
+
+    $delete_person_id = $_POST['id'];
+
+     // this is for deleting an issue will have to work on
+ if($_SESSION['admin'] != 'Y' && $_SESSION['user_id'] != $delete_person_id)
+ {
+    if(admin =='Y')
+    {
+        header("Location: persons_list.php");
+        exit();
+    }
+    else if(admin =='N')
+    {
+        session_delete();
+        header("Location: login.php");
+        exit();
+
+    }
+   
+
+
+ }
+    
+    
+    $stmt = $conn->prepare("DELETE FROM iss_persons WHERE id = ?");
+    $stmt->bind_param("i", $delete_person_id);
+     // Execute the query
+     $stmt->execute();
+
+     // Close the prepared statement
+     $stmt->close();
+    header("Location: persons_list.php");
+    exit();
+
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_person'])) {
+    // Get form data
+    $id = $_POST['id'];
+    $fname = $_POST['fname'];
+    $lname = $_POST['lname'];
+    $mobile = $_POST['mobile'];
+    $email = $_POST['email'];
+    $admin = $_SESSION['admin'];
+   
+ 
+
+    // this is for updating an issue will have to work on
+    if($admin != 'Y' && $_SESSION['user_id'] != $id)
+    {
+       header("Location: persons_list.php");
+      exit();
+
+    }
+
+    if($admin == 'Y')
+    {
+        // Update SQL query for admin 
+    $stmt = $conn->prepare("UPDATE iss_persons SET fname = ?, lname = ?, mobile = ?, email = ?, `admin` = ? WHERE id = ?");
+    $stmt->bind_param("sssssi", $fname, $lname, $mobile, $email, $admin, $id);
+    }
+    else if ($admin == 'N')
+    {
+    // Update SQL query for user 
+    $stmt = $conn->prepare("UPDATE iss_persons SET fname = ?, lname = ?, mobile = ?, email = ? WHERE id = ?");
+    $stmt->bind_param("ssssi", $fname, $lname, $mobile, $email, $id);
+    }
+    
+
+    // Execute the query
+    if ($stmt->execute()) {
+        echo "Record updated successfully.";
+    } else {
+        echo "Error updating record: " . $stmt->error;
+    }
+    // Close the prepared statement
+    $stmt->close();
+
+}
 // Fetch all persons from the database
 $result = $conn->query("SELECT id, fname, lname, mobile, email, pwd_hash, pwd_salt, `admin` FROM iss_persons");
 ?>
@@ -77,11 +158,16 @@ $result = $conn->query("SELECT id, fname, lname, mobile, email, pwd_hash, pwd_sa
                     <!-- View Details Button -->
                     <button class="btn btn-info" data-toggle="modal" data-target="#viewModal<?php echo $row['id']; ?>">View</button>
                     
+                   <!-- to not show the buttons if user doesn't have the proper permissions -->
+
+                    <?php if($_SESSION['admin'] == 'Y' || $_SESSION['user_id'] == $row['id']) { ?>
                     <!-- Edit Button -->
                     <button class="btn btn-warning" data-toggle="modal" data-target="#editModal<?php echo $row['id']; ?>">Edit</button>
                     
                     <!-- Delete Button -->
                     <button class="btn btn-danger" data-toggle="modal" data-target="#deleteModal<?php echo $row['id']; ?>">Delete</button>
+                   
+                    <?php }?>
                 </td>
             </tr>
 
@@ -120,7 +206,7 @@ $result = $conn->query("SELECT id, fname, lname, mobile, email, pwd_hash, pwd_sa
                             </button>
                         </div>
                         <div class="modal-body">
-                            <form action="edit_person.php" method="POST">
+                            <form action="persons_list.php" method="POST">
                                 <input type="hidden" name="id" value="<?php echo $row['id']; ?>">
                                 <div class="form-group">
                                     <label for="fname">First Name:</label>
@@ -141,11 +227,11 @@ $result = $conn->query("SELECT id, fname, lname, mobile, email, pwd_hash, pwd_sa
                                 <div class="form-group">
                                     <label for="admin">Admin:</label>
                                     <select class="form-control" name="admin">
-                                        <option value="1" <?php echo $row['admin'] ? 'selected' : ''; ?>>Yes</option>
-                                        <option value="0" <?php echo !$row['admin'] ? 'selected' : ''; ?>>No</option>
+                                        <option value="Y" <?php echo $row['admin'] == 'Y'? 'selected' : ''; ?>>Yes</option>
+                                        <option value="N" <?php echo $row['admin'] == 'N'? 'selected' : ''; ?>>No</option>
                                     </select>
                                 </div>
-                                <button type="submit" class="btn btn-primary">Save Changes</button>
+                                <button type="submit" name="update_person" class="btn btn-primary">Save Changes</button>
                             </form>
                         </div>
                     </div>
@@ -166,9 +252,9 @@ $result = $conn->query("SELECT id, fname, lname, mobile, email, pwd_hash, pwd_sa
                             <p>Are you sure you want to delete this person?</p>
                         </div>
                         <div class="modal-footer">
-                            <form action="delete_person.php" method="POST">
+                            <form action="persons_list.php" method="POST">
                                 <input type="hidden" name="id" value="<?php echo $row['id']; ?>">
-                                <button type="submit" class="btn btn-danger">Delete</button>
+                                <button type="submit" name="delete_person" vclass="btn btn-danger">Delete</button>
                                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                             </form>
                         </div>
