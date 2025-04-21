@@ -6,24 +6,14 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-$servername = "localhost";
-$username = "root"; // Update with your MySQL username
-$password = ""; // Update with your MySQL password
-$dbname = "cis355"; // Database name
-
-// Create connection
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-// Check connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+// Include the PDO connection
+require '../database/database.php';
+$pdo = Database::connect(); // Connect to the database using PDO
 
 // Handle add issue form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_issue'])) 
 {
     $newFileName = null;
-
 
     if(isset($_FILES['pdf_attachment']))
     {
@@ -37,7 +27,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_issue']))
         if($fileExtension !== 'pdf')
         {
             die("Only PDF files allowed");
-
         }
 
         if($fileSize > 2 * 1024 * 1024)
@@ -48,21 +37,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_issue']))
         $uploadFileDir = './uploads/';
         $dest_path = $uploadFileDir.$newFileName;
 
-        #if no exist create dir 
+        # If directory does not exist, create it
         if(!is_dir($uploadFileDir))
         {
-            #files directory, permissions, idk
             mkdir($uploadFileDir, 0755, true);
         }
 
         if(move_uploaded_file($fileTmpPath, $dest_path))
         {
-                $attachmentPath = $dest_path;
-
+            $attachmentPath = $dest_path;
         }
         else
         {
-            die("error moving file");
+            die("Error moving file");
         }
     }
   
@@ -74,40 +61,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_issue']))
     $org = $_POST['org'];
     $project = $_POST['project'];
     $per_id = $_POST['per_id']; // Get the selected person ID from the dropdown
-    // $newFileName is PDF attachment
-    // $attachmentPath is entire path
-  
 
-// Prepare the SQL statement
-$stmt = $conn->prepare("INSERT INTO iss_issues 
-    (short_description, long_description, open_date, close_date, priority, org, project, per_id, pdf_attachment) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    // Prepare the SQL statement for inserting the new issue
+    $sql = "INSERT INTO iss_issues 
+            (short_description, long_description, open_date, close_date, priority, org, project, per_id, pdf_attachment) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-// Bind parameters (s = string, i = integer — adjust as needed)
-$stmt->bind_param("sssssssis", 
-    $short_description, 
-    $long_description, 
-    $open_date, 
-    $close_date, 
-    $priority, 
-    $org, 
-    $project, 
-    $per_id, 
-    $newFileName
-);
+    // Prepare and execute the statement
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([
+        $short_description, 
+        $long_description, 
+        $open_date, 
+        $close_date, 
+        $priority, 
+        $org, 
+        $project, 
+        $per_id, 
+        $newFileName
+    ]);
 
-// Execute the statement
-$stmt->execute();
-
-// Close the statement
-$stmt->close();
-    // Redirect back to the issue list page after submitting the form
+    // Redirect to the issue list page after submitting the form
     header("Location: issue_list.php");
     exit();
 }
 
 // Fetch list of users to populate the person ID dropdown
-$user_result = $conn->query("SELECT id, email FROM iss_persons"); // Assuming users table with id and username
+$sql_users = "SELECT id, email FROM iss_persons"; 
+$user_result = $pdo->query($sql_users);
 ?>
 
 <!DOCTYPE html>
@@ -176,11 +157,10 @@ $user_result = $conn->query("SELECT id, email FROM iss_persons"); // Assuming us
             <label for="per_id">Assigned Person:</label>
             <select class="form-control" name="per_id" required>
                 <option value="" disabled selected>Select a Person</option>
-                <?php while ($user = $user_result->fetch_assoc()): ?>
+                <?php while ($user = $user_result->fetch(PDO::FETCH_ASSOC)): ?>
                     <option value="<?php echo $user['id']; ?>"><?php echo $user['email']; ?></option>
                 <?php endwhile; ?>
             </select>
-
         </div>
 
         <div class="form-group">
@@ -205,5 +185,5 @@ $user_result = $conn->query("SELECT id, email FROM iss_persons"); // Assuming us
 
 <?php
 // Close connection
-$conn->close();
+Database::disconnect();
 ?>
