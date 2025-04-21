@@ -50,6 +50,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_comment'])) {
 
 }
 
+if (isset($_POST['edit_comment_submit'])) {
+    $comment_id = intval($_POST['comment_id']);
+    $short_comment = $conn->real_escape_string($_POST['short_comment']);
+    $long_comment = $conn->real_escape_string($_POST['long_comment']);
+
+    // Check if the logged-in user owns the comment
+    $check = $conn->query("SELECT per_id FROM iss_comments WHERE id = $comment_id");
+    if ($check && $check->num_rows > 0) {
+        $owner = $check->fetch_assoc();
+        if ($owner['per_id'] == $_SESSION['user_id']) {
+            $update = $conn->query("UPDATE iss_comments SET short_comment = '$short_comment', long_comment = '$long_comment' WHERE id = $comment_id");
+            if (!$update) {
+                echo "Error updating comment: " . $conn->error;
+            }
+        } else {
+            echo "Unauthorized action.";
+        }
+    }
+    // Optional: Redirect back to the same page after saving
+    header("Location: issue_list.php?id=" . $_POST['iss_id']);
+    exit;
+}
+
+
 // Handle delete comment request
 if (isset($_GET['delete_comment_id'])) {
     $delete_comment_id = $_GET['delete_comment_id'];
@@ -93,8 +117,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_issue']))
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_issue'])) {
     
-    
-    if(isset($_FILES['pdf_attachment']))
+    $newFileName = null; // Default to null unless a new file is uploaded
+
+    if(isset($_FILES['pdf_attachment']) && $_FILES['pdf_attachment']['error'] !== UPLOAD_ERR_NO_FILE)
     {
         $fileTmpPath = $_FILES['pdf_attachment']['tmp_name'];
         $fileName = $_FILES['pdf_attachment']['name'];
@@ -102,6 +127,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_issue'])) {
         $fileType = $_FILES['pdf_attachment']['type'];
         $fileNameCmps = explode(".", $fileName);
         $fileExtension = strtolower(end($fileNameCmps));
+
+        print_r($_FILES);
 
         if($fileExtension !== 'pdf')
         {
@@ -156,11 +183,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_issue'])) {
 
     }
 
-
+    if ($newFileName !== null) {
     // Update SQL query
     $stmt = $conn->prepare("UPDATE iss_issues SET short_description = ?, long_description = ?, priority = ?, org = ?, project = ?, open_date = ?, close_date = ?, per_id = ?, pdf_attachment = ? WHERE id = ?");
     $stmt->bind_param("sssssssssi", $short_description, $long_description, $priority, $org, $project, $open_date, $close_date, $assigned_person, $newFileName, $id);
-
+}
+ else {
+        // ✅ Update everything except the file
+        $stmt = $conn->prepare("UPDATE iss_issues SET short_description = ?, long_description = ?, priority = ?, org = ?, project = ?, open_date = ?, close_date = ?, per_id = ? WHERE id = ?");
+        $stmt->bind_param("ssssssssi", $short_description, $long_description, $priority, $org, $project, $open_date, $close_date, $assigned_person, $id);
+    }
     // Execute the query
     if ($stmt->execute()) {
         echo "Record updated successfully.";
@@ -272,35 +304,53 @@ INNER JOIN iss_persons ON iss_issues.per_id = iss_persons.id;
                                                         WHERE c.iss_id = " . $row['id']);
                         while ($comment = $comments_result->fetch_assoc()):
                     ?>
-                        <div class="comment" id="comment-<?php echo $comment['id']; ?>">
+                       <div class="comment" id="comment-<?php echo $comment['id']; ?>">
                             <p><strong><?php echo $comment['fname'] . " " . $comment['lname']; ?>:</strong> 
-                                <span class="comment-text" id="short-comment-<?php echo $comment['id']; ?>"><?php echo $comment['short_comment']; ?></span>
+                                 <span class="comment-text" id="short-comment-<?php echo $comment['id']; ?>"><?php echo htmlspecialchars($comment['short_comment']); ?></span>
                             </p>
-                            <p><span class="comment-text" id="long-comment-<?php echo $comment['id']; ?>"><?php echo $comment['long_comment']; ?></span></p>
+                            <p><span class="comment-text" id="long-comment-<?php echo $comment['id']; ?>"><?php echo htmlspecialchars($comment['long_comment']); ?></span></p>
                             <p><small>Posted on: <?php echo $comment['posted_date']; ?></small></p>
 
-                            <?php if ($comment['per_id'] == $_SESSION['user_id']): ?>
-                                <!-- Edit Button -->
-                                <button class="btn btn-warning btn-sm" onclick="editComment(<?php echo $comment['id']; ?>)">Edit</button>
-                                <!-- Delete Button -->
-                                <a href="issue_list.php?delete_comment_id=<?php echo $comment['id']; ?>" class="btn btn-danger btn-sm">Delete</a>
-                            <?php endif; ?>
+                            
+                        
+                        <?php
+// Before your main HTML, near the top of the PHP section
+$editing_comment_id = isset($_POST['edit_comment']) ? intval($_POST['edit_comment']) : null;
+?>
 
-                            <!-- Edit Comment Form (hidden by default) -->
-                            <form action="issue_list.php" method="POST" id="edit-comment-form-<?php echo $comment['id']; ?>" style="display:none;">
-                                <input type="hidden" name="comment_id" value="<?php echo $comment['id']; ?>">
-                                <div class="form-group">
-                                    <label for="short_comment">Short Comment:</label>
-                                    <input type="text" class="form-control" name="short_comment" id="edit-short-comment-<?php echo $comment['id']; ?>" value="<?php echo $comment['short_comment']; ?>" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="long_comment">Long Comment:</label>
-                                    <textarea class="form-control" name="long_comment" id="edit-long-comment-<?php echo $comment['id']; ?>" required><?php echo $comment['long_comment']; ?></textarea>
-                                </div>
-                                <button type="submit" name="edit_comment" class="btn btn-primary">Save Changes</button>
-                                <button type="button" class="btn btn-secondary" onclick="cancelEdit(<?php echo $comment['id']; ?>)">Cancel</button>
-                            </form>
+<?php if ($comment['per_id'] == $_SESSION['user_id']): ?>
+    <!-- Edit Button as form -->
+    <form method="POST" style="display:inline;">
+        <input type="hidden" name="iss_id" value="<?php echo $row['id']; ?>">
+        <input type="hidden" name="open_modal_id" value="<?php echo $row['id']; ?>">
+        <button type="submit" name="edit_comment" value="<?php echo $comment['id']; ?>" class="btn btn-warning btn-sm">Edit</button>
+    </form>
+
+    <!-- Delete Button -->
+    <a href="issue_list.php?delete_comment_id=<?php echo $comment['id']; ?>" class="btn btn-danger btn-sm">Delete</a>
+
+    <!-- Only show the edit form if this comment is being edited -->
+    <?php if ($editing_comment_id == $comment['id']): ?>
+        <form action="issue_list.php" method="POST" style="margin-top:10px;">
+            <input type="hidden" name="comment_id" value="<?php echo $comment['id']; ?>">
+            <input type="hidden" name="iss_id" value="<?php echo $row['id']; ?>">
+
+            <div class="form-group">
+                <label for="short_comment">Short Comment:</label>
+                <input type="text" class="form-control" name="short_comment" value="<?php echo htmlspecialchars($comment['short_comment']); ?>" required>
+            </div>
+            <div class="form-group">
+                <label for="long_comment">Long Comment:</label>
+                <textarea class="form-control" name="long_comment" required><?php echo htmlspecialchars($comment['long_comment']); ?></textarea>
+            </div>
+
+            <button type="submit" name="edit_comment_submit" class="btn btn-primary">Save Changes</button>
+            <a href="issue_list.php?id=<?php echo $row['id']; ?>" class="btn btn-secondary">Cancel</a>
+        </form>
+    <?php endif; ?>
+<?php endif; ?>
                         </div>
+
                     <?php endwhile; ?>
                 </div>
 
@@ -326,6 +376,13 @@ INNER JOIN iss_persons ON iss_issues.per_id = iss_persons.id;
     </div>
 </div>
 
+<?php if (isset($_POST['open_modal_id'])): ?>
+<script>
+    $(document).ready(function(){
+        $('#readModal<?php echo $_POST['open_modal_id']; ?>').modal('show');
+    });
+</script>
+<?php endif; ?>
 <script>
     // Function to toggle edit form visibility when "Edit" button is clicked
     function editComment(commentId) {
@@ -342,7 +399,7 @@ INNER JOIN iss_persons ON iss_issues.per_id = iss_persons.id;
         document.getElementById('short-comment-' + commentId).style.display = 'inline';
         document.getElementById('long-comment-' + commentId).style.display = 'inline';
         document.getElementById('edit-comment-form-' + commentId).style.display = 'none';
-    }
+     }
 </script>
 
 
