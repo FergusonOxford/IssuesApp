@@ -6,18 +6,14 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-$servername = "localhost";
-$username = "root"; // Update with your MySQL username
-$password = ""; // Update with your MySQL password
-$dbname = "cis355"; // Database name
-
-// Create connection
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-// Check connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
+// check if user is admin and if not send to back to main person_list page
+if ($_SESSION['admin'] != 'Y') {
+    header("Location: persons_list.php");
+    exit();
 }
+
+require '../database/database.php'; // Include the PDO connection
+$pdo = Database::connect();
 
 // Handle add person form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_person'])) {
@@ -28,20 +24,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_person'])) {
     $password = $_POST['password']; // Plain password
     $admin = $_POST['admin']; // 'Y' for admin, 'N' for non-admin
 
-    
-    
-
-    // Salt ranodmly generated, but can be added if required
-    $pwd_salt = bin2hex(random_bytes(32));; // You can leave this empty or add a custom salt
+    // Salt randomly generated, but can be added if required
+    $pwd_salt = bin2hex(random_bytes(32)); // You can leave this empty or add a custom salt
 
     // Generate the MD5 hash with the salt
     $pwd_hash = md5($password . $pwd_salt);
 
-    // Insert new person into the database
-    $stmt = $conn->prepare("INSERT INTO iss_persons (fname, lname, mobile, email, pwd_hash, pwd_salt, admin) 
-                            VALUES (?, ?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("sssssss", $fname, $lname, $mobile, $email, $pwd_hash, $pwd_salt, $admin);
-    $stmt->execute();
+    // Insert new person into the database using PDO
+    $stmt = $pdo->prepare("INSERT INTO iss_persons (fname, lname, mobile, email, pwd_hash, pwd_salt, admin) 
+                           VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$fname, $lname, $mobile, $email, $pwd_hash, $pwd_salt, $admin]);
 
     // Redirect to the persons list page after adding
     header("Location: persons_list.php");
@@ -123,6 +115,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_person'])) {
 </html>
 
 <?php
-// Close connection
-$conn->close();
+// PDO automatically closes the connection when the script ends, so no need to explicitly close the connection.
 ?>

@@ -2,107 +2,71 @@
 // Start session to check if user is logged in
 session_start();
 if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php"); // Redirect to login page if not logged in
+    header("Location: login.php");
     exit();
 }
 
-$servername = "localhost";
-$username = "root"; // Update with your MySQL username
-$password = ""; // Update with your MySQL password
-$dbname = "cis355"; // Database name
+require '../database/database.php';
+$pdo = Database::connect();
 
-// Create connection
-$conn = new mysqli($servername, $username, $password, $dbname);
+// Delete person logic
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_person'])) {
+    $delete_person_id = $_POST['id'];
+    $is_admin = $_SESSION['admin'];
+    $user_id = $_SESSION['user_id'];
 
-// Check connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
+    // Only admins can delete other users
+    if ($is_admin !== 'Y' && $user_id != $delete_person_id) {
+        session_destroy();
+        header("Location: login.php");
+        exit();
+    }
+
+    $stmt = $pdo->prepare("DELETE FROM iss_persons WHERE id = ?");
+    $stmt->execute([$delete_person_id]);
+
+    header("Location: persons_list.php");
+    exit();
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_person'])) 
-{
+// Update person logic
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_person'])) {
+    $id     = $_POST['id'];
+    $fname  = $_POST['fname'];
+    $lname  = $_POST['lname'];
+    $mobile = $_POST['mobile'];
+    $email  = $_POST['email'];
+    $admin  = $_SESSION['admin'];
 
-    $delete_person_id = $_POST['id'];
+    $user_id = $_SESSION['user_id'];
 
-     // this is for deleting an issue will have to work on
- if($_SESSION['admin'] != 'Y' && $_SESSION['user_id'] != $delete_person_id)
- {
-    if(admin =='Y')
-    {
+    // Users can only edit their own info unless they are admin
+    if ($admin !== 'Y' && $user_id != $id) {
         header("Location: persons_list.php");
         exit();
     }
-    else if(admin =='N')
-    {
-        session_delete();
-        header("Location: login.php");
-        exit();
 
+    if ($admin === 'Y') {
+        $admin_flag = $_POST['admin']; // Make sure this is coming from a form input if admin editing
+        $stmt = $pdo->prepare("UPDATE iss_persons SET fname = ?, lname = ?, mobile = ?, email = ?, `admin` = ? WHERE id = ?");
+        $stmt->execute([$fname, $lname, $mobile, $email, $admin_flag, $id]);
+    } else {
+        $stmt = $pdo->prepare("UPDATE iss_persons SET fname = ?, lname = ?, mobile = ?, email = ? WHERE id = ?");
+        $stmt->execute([$fname, $lname, $mobile, $email, $id]);
     }
-   
 
-
- }
-    
-    
-    $stmt = $conn->prepare("DELETE FROM iss_persons WHERE id = ?");
-    $stmt->bind_param("i", $delete_person_id);
-     // Execute the query
-     $stmt->execute();
-
-     // Close the prepared statement
-     $stmt->close();
     header("Location: persons_list.php");
     exit();
-
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_person'])) {
-    // Get form data
-    $id = $_POST['id'];
-    $fname = $_POST['fname'];
-    $lname = $_POST['lname'];
-    $mobile = $_POST['mobile'];
-    $email = $_POST['email'];
-    $admin = $_SESSION['admin'];
-   
- 
+// Fetch all persons
+$stmt = $pdo->query("SELECT id, fname, lname, mobile, email, pwd_hash, pwd_salt, `admin` FROM iss_persons");
+$persons = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // this is for updating an issue will have to work on
-    if($admin != 'Y' && $_SESSION['user_id'] != $id)
-    {
-       header("Location: persons_list.php");
-      exit();
-
-    }
-
-    if($admin == 'Y')
-    {
-        // Update SQL query for admin 
-    $stmt = $conn->prepare("UPDATE iss_persons SET fname = ?, lname = ?, mobile = ?, email = ?, `admin` = ? WHERE id = ?");
-    $stmt->bind_param("sssssi", $fname, $lname, $mobile, $email, $admin, $id);
-    }
-    else if ($admin == 'N')
-    {
-    // Update SQL query for user 
-    $stmt = $conn->prepare("UPDATE iss_persons SET fname = ?, lname = ?, mobile = ?, email = ? WHERE id = ?");
-    $stmt->bind_param("ssssi", $fname, $lname, $mobile, $email, $id);
-    }
-    
-
-    // Execute the query
-    if ($stmt->execute()) {
-        echo "Record updated successfully.";
-    } else {
-        echo "Error updating record: " . $stmt->error;
-    }
-    // Close the prepared statement
-    $stmt->close();
-
-}
-// Fetch all persons from the database
-$result = $conn->query("SELECT id, fname, lname, mobile, email, pwd_hash, pwd_salt, `admin` FROM iss_persons");
+// Don't forget to disconnect
+Database::disconnect();
 ?>
+
 
 <!DOCTYPE html>
 <html lang="en">
@@ -118,9 +82,10 @@ $result = $conn->query("SELECT id, fname, lname, mobile, email, pwd_hash, pwd_sa
 <!-- Logout Button -->
 <a href="logout.php"><button class="btn btn-danger">Logout</button></a>
 
+<?php if ($_SESSION['admin'] == 'Y') { ?> 
 <!-- Add New Person Button -->
 <a href="add_person.php"><button class="btn btn-primary">Add New Person</button></a>
-
+<?php } ?>
 <a href="issue_list.php">
     <button class="btn btn-primary">View Issues List</button>
 </a>
@@ -146,7 +111,9 @@ $result = $conn->query("SELECT id, fname, lname, mobile, email, pwd_hash, pwd_sa
         </tr>
     </thead>
     <tbody>
-        <?php while ($row = $result->fetch_assoc()): ?>
+    <?php foreach ($persons as $row): ?>
+
+
             <tr>
                 <td><?php echo $row['id']; ?></td>
                 <td><?php echo $row['fname']; ?></td>
@@ -261,7 +228,7 @@ $result = $conn->query("SELECT id, fname, lname, mobile, email, pwd_hash, pwd_sa
                     </div>
                 </div>
             </div>
-        <?php endwhile; ?>
+        <?php endforeach; ?>
     </tbody>
 </table>
 
@@ -273,7 +240,4 @@ $result = $conn->query("SELECT id, fname, lname, mobile, email, pwd_hash, pwd_sa
 </body>
 </html>
 
-<?php
-// Close connection
-$conn->close();
-?>
+

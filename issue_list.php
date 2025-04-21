@@ -6,20 +6,10 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-require '../database/database.php';
+require '../database/database.php'; // Ensure this includes the PDO database connection
 
-$servername = "localhost";
-$username = "root"; // Update with your MySQL username
-$password = ""; // Update with your MySQL password
-$dbname = "cis355"; // Database name
-
-// Create connection
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-// Check connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+// Connect to the database
+$pdo = Database::connect();
 
 // Handle comment form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_comment'])) {
@@ -28,99 +18,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_comment'])) {
     $iss_id = $_POST['iss_id'];
     $per_id = $_SESSION['user_id']; // Get the logged-in user's ID
 
-   
-    
     // Prepare the SQL query with placeholders
-    $stmt = $conn->prepare("INSERT INTO iss_comments (per_id, iss_id, short_comment, long_comment, posted_date) 
+    $stmt = $pdo->prepare("INSERT INTO iss_comments (per_id, iss_id, short_comment, long_comment, posted_date) 
     VALUES (?, ?, ?, ?, NOW())");
 
     // Bind the parameters to the placeholders
-    $stmt->bind_param("iiss", $per_id, $iss_id, $short_comment, $long_comment);
+    $stmt->bindValue(1, $per_id, PDO::PARAM_INT);
+    $stmt->bindValue(2, $iss_id, PDO::PARAM_INT);
+    $stmt->bindValue(3, $short_comment, PDO::PARAM_STR);
+    $stmt->bindValue(4, $long_comment, PDO::PARAM_STR);
 
     // Execute the statement
     $stmt->execute();
 
-    // Close the prepared statement
-    $stmt->close();
-
-
+    // Redirect after success
     header("Location: issue_list.php");
     exit();
-    
-
 }
 
+// Edit comment handling
 if (isset($_POST['edit_comment_submit'])) {
     $comment_id = intval($_POST['comment_id']);
-    $short_comment = $conn->real_escape_string($_POST['short_comment']);
-    $long_comment = $conn->real_escape_string($_POST['long_comment']);
+    $short_comment = $_POST['short_comment'];
+    $long_comment = $_POST['long_comment'];
 
     // Check if the logged-in user owns the comment
-    $check = $conn->query("SELECT per_id FROM iss_comments WHERE id = $comment_id");
-    if ($check && $check->num_rows > 0) {
-        $owner = $check->fetch_assoc();
+    $check = $pdo->prepare("SELECT per_id FROM iss_comments WHERE id = ?");
+    $check->execute([$comment_id]);
+    
+    if ($check->rowCount() > 0) {
+        $owner = $check->fetch(PDO::FETCH_ASSOC);
         if ($owner['per_id'] == $_SESSION['user_id']) {
-            $update = $conn->query("UPDATE iss_comments SET short_comment = '$short_comment', long_comment = '$long_comment' WHERE id = $comment_id");
-            if (!$update) {
-                echo "Error updating comment: " . $conn->error;
-            }
+            $update = $pdo->prepare("UPDATE iss_comments SET short_comment = ?, long_comment = ? WHERE id = ?");
+            $update->execute([$short_comment, $long_comment, $comment_id]);
         } else {
             echo "Unauthorized action.";
         }
     }
-    // Optional: Redirect back to the same page after saving
-    header("Location: issue_list.php?id=" . $_POST['iss_id']);
+
+    // Redirect after success
+    header("Location: issue_list.php");
     exit;
 }
-
 
 // Handle delete comment request
 if (isset($_GET['delete_comment_id'])) {
     $delete_comment_id = $_GET['delete_comment_id'];
-    $stmt = $conn->prepare("DELETE FROM iss_comments WHERE id = ?");
-    $stmt->bind_param("i", $delete_comment_id);
-     // Execute the query
-     $stmt->execute();
+    $stmt = $pdo->prepare("DELETE FROM iss_comments WHERE id = ?");
+    $stmt->execute([$delete_comment_id]);
 
-     // Close the prepared statement
-     $stmt->close();
+    // Redirect after deletion
     header("Location: issue_list.php");
     exit();
 }
 
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_issue'])) 
-{
-
+// Handle delete issue request
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_issue'])) {
     $delete_issue_id = $_POST['id'];
 
- // this is for deleting an issue will have to work on
- if($_SESSION['admin'] != 'Y' && $_SESSION['user_id'] != $delete_issue_id)
- {
-    header("Location: issue_list.php");
-   exit();
+    if ($_SESSION['admin'] != 'Y' && $_SESSION['user_id'] != $delete_issue_id) {
+        header("Location: issue_list.php");
+        exit();
+    }
 
- }
+    $stmt = $pdo->prepare("DELETE FROM iss_issues WHERE id = ?");
+    $stmt->execute([$delete_issue_id]);
 
-   
-    $stmt = $conn->prepare("DELETE FROM iss_issues WHERE id = ?");
-    $stmt->bind_param("i", $delete_issue_id);
-     // Execute the query
-     $stmt->execute();
-
-     // Close the prepared statement
-     $stmt->close();
+    // Redirect after deletion
     header("Location: issue_list.php");
     exit();
-
 }
 
+// Handle issue update request
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_issue'])) {
-    
-    $newFileName = null; // Default to null unless a new file is uploaded
+    $newFileName = null;
 
-    if(isset($_FILES['pdf_attachment']) && $_FILES['pdf_attachment']['error'] !== UPLOAD_ERR_NO_FILE)
-    {
+    // Handle file upload
+    if (isset($_FILES['pdf_attachment']) && $_FILES['pdf_attachment']['error'] !== UPLOAD_ERR_NO_FILE) {
         $fileTmpPath = $_FILES['pdf_attachment']['tmp_name'];
         $fileName = $_FILES['pdf_attachment']['name'];
         $fileSize = $_FILES['pdf_attachment']['size'];
@@ -128,40 +102,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_issue'])) {
         $fileNameCmps = explode(".", $fileName);
         $fileExtension = strtolower(end($fileNameCmps));
 
-        print_r($_FILES);
-
-        if($fileExtension !== 'pdf')
-        {
+        if ($fileExtension !== 'pdf') {
             die("Only PDF files allowed");
-
         }
 
-        if($fileSize > 2 * 1024 * 1024)
-        {
+        if ($fileSize > 2 * 1024 * 1024) {
             die("File size exceeds 2MB limit");
         }
+
         $newFileName = MD5(time() . $fileName) . "." . $fileExtension;
         $uploadFileDir = './uploads/';
-        $dest_path = $uploadFileDir.$newFileName;
+        $dest_path = $uploadFileDir . $newFileName;
 
-        #if no exist create dir 
-        if(!is_dir($uploadFileDir))
-        {
-            #files directory, permissions, idk
+        // If the upload directory doesn't exist, create it
+        if (!is_dir($uploadFileDir)) {
             mkdir($uploadFileDir, 0755, true);
         }
 
-        if(move_uploaded_file($fileTmpPath, $dest_path))
-        {
-                $attachmentPath = $dest_path;
-
-        }
-        else
-        {
-            die("error moving file");
+        if (!move_uploaded_file($fileTmpPath, $dest_path)) {
+            die("Error moving file");
         }
     }
-    
+
     // Get form data
     $id = $_POST['id'];
     $short_description = $_POST['short_description'];
@@ -172,43 +134,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_issue'])) {
     $open_date = $_POST['open_date'];
     $close_date = $_POST['close_date'];
     $assigned_person = $_POST['assigned_person'];
- 
- 
 
-    // this is for updating an issue will have to work on
-    if($_SESSION['admin'] != 'Y' && $_SESSION['user_id'] != $assigned_person)
-    {
-       header("Location: issue_list.php");
-      exit();
-
+    // Validate user permissions for updating the issue
+    if ($_SESSION['admin'] != 'Y' && $_SESSION['user_id'] != $assigned_person) {
+        header("Location: issue_list.php");
+        exit();
     }
 
     if ($newFileName !== null) {
-    // Update SQL query
-    $stmt = $conn->prepare("UPDATE iss_issues SET short_description = ?, long_description = ?, priority = ?, org = ?, project = ?, open_date = ?, close_date = ?, per_id = ?, pdf_attachment = ? WHERE id = ?");
-    $stmt->bind_param("sssssssssi", $short_description, $long_description, $priority, $org, $project, $open_date, $close_date, $assigned_person, $newFileName, $id);
-}
- else {
-        // ✅ Update everything except the file
-        $stmt = $conn->prepare("UPDATE iss_issues SET short_description = ?, long_description = ?, priority = ?, org = ?, project = ?, open_date = ?, close_date = ?, per_id = ? WHERE id = ?");
-        $stmt->bind_param("ssssssssi", $short_description, $long_description, $priority, $org, $project, $open_date, $close_date, $assigned_person, $id);
-    }
-    // Execute the query
-    if ($stmt->execute()) {
-        echo "Record updated successfully.";
+        // Update issue with attachment
+        $stmt = $pdo->prepare("UPDATE iss_issues SET short_description = ?, long_description = ?, priority = ?, org = ?, project = ?, open_date = ?, close_date = ?, per_id = ?, pdf_attachment = ? WHERE id = ?");
+        $stmt->execute([$short_description, $long_description, $priority, $org, $project, $open_date, $close_date, $assigned_person, $newFileName, $id]);
     } else {
-        echo "Error updating record: " . $stmt->error;
+        // Update issue without attachment
+        $stmt = $pdo->prepare("UPDATE iss_issues SET short_description = ?, long_description = ?, priority = ?, org = ?, project = ?, open_date = ?, close_date = ?, per_id = ? WHERE id = ?");
+        $stmt->execute([$short_description, $long_description, $priority, $org, $project, $open_date, $close_date, $assigned_person, $id]);
     }
-    // Close the prepared statement
-    $stmt->close();
 
+    // Redirect after update
+    header("Location: issue_list.php");
+    exit();
 }
+
+// Set up pagination
+$limit = 5; // Issues per page
+$page = isset($_GET['page']) ? intval($_GET['page']) : 1;
+$offset = ($page - 1) * $limit;
+
+// Get filter from query string or default to 'open'
+$filter = isset($_GET['issue_filter']) ? $_GET['issue_filter'] : 'open';
+
+// Count total number of issues (without LIMIT) to calculate total pages
+if ($filter == 'all') {
+    $count_query = "SELECT COUNT(*) AS total FROM iss_issues";
+} else {
+    $count_query = "SELECT COUNT(*) AS total FROM iss_issues WHERE close_date IS NULL OR close_date > NOW()";
+}
+
+$stmt = $pdo->query($count_query);
+$count_row = $stmt->fetch(PDO::FETCH_ASSOC);
+$total_issues = $count_row['total'];
+$total_pages = ceil($total_issues / $limit);
+
+// Main SELECT query to fetch issues (with LIMIT + OFFSET)
+if ($filter == 'all') {
+    $sql = "SELECT iss_issues.*, iss_persons.fname AS assigned_person_fname, iss_persons.lname AS assigned_person_lname
+            FROM iss_issues
+            INNER JOIN iss_persons ON iss_issues.per_id = iss_persons.id
+            ORDER BY iss_issues.close_date DESC
+            LIMIT :limit OFFSET :offset";
+} else {
+    $sql = "SELECT iss_issues.*, iss_persons.fname AS assigned_person_fname, iss_persons.lname AS assigned_person_lname
+            FROM iss_issues
+            INNER JOIN iss_persons ON iss_issues.per_id = iss_persons.id
+            WHERE close_date IS NULL OR close_date > NOW()
+            ORDER BY iss_issues.close_date DESC
+            LIMIT :limit OFFSET :offset";
+}
+
+$stmt = $pdo->prepare($sql);
+$stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+$stmt->execute();
+
 // Fetch all issues
-$result = $conn->query("SELECT iss_issues.*, iss_persons.fname AS assigned_person_fname, iss_persons.lname AS assigned_person_lname
-FROM iss_issues
-INNER JOIN iss_persons ON iss_issues.per_id = iss_persons.id;
-"); // Join to get assigned person's name
+$issues = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 ?>
+
 
 <!DOCTYPE html>
 <html lang="en">
@@ -238,8 +231,19 @@ INNER JOIN iss_persons ON iss_issues.per_id = iss_persons.id;
 </a>
 
 
+
+
+
 <h2>Issue List</h2>
 
+<!-- Issue Filter -->
+<form method="GET" class="mb-3">
+    <select name="issue_filter" class="form-control" style="width: 200px; display: inline-block;">
+        <option value="open" <?php echo isset($_GET['issue_filter']) && $_GET['issue_filter'] == 'open' ? 'selected' : ''; ?>>Open Issues</option>
+        <option value="all" <?php echo isset($_GET['issue_filter']) && $_GET['issue_filter'] == 'all' ? 'selected' : ''; ?>>All Issues</option>
+    </select>
+    <button type="submit" class="btn btn-primary">Filter</button>
+</form>
 <table class="table table-bordered">
     <thead>
         <tr>
@@ -254,7 +258,7 @@ INNER JOIN iss_persons ON iss_issues.per_id = iss_persons.id;
         </tr>
     </thead>
     <tbody>
-        <?php while ($row = $result->fetch_assoc()): ?>
+    <?php foreach ($issues as $row): ?>
             <tr>
                 <td><?php echo $row['id']; ?></td>
                 <td><?php echo $row['short_description']; ?></td>
@@ -297,61 +301,62 @@ INNER JOIN iss_persons ON iss_issues.per_id = iss_persons.id;
                 <!-- Comments Section -->
                 <h5>Comments</h5>
                 <div class="comments-list">
-                    <?php
-                        // Fetch comments for the current issue
-                        $comments_result = $conn->query("SELECT c.*, p.fname, p.lname FROM iss_comments c 
-                                                        INNER JOIN iss_persons p ON c.per_id = p.id 
-                                                        WHERE c.iss_id = " . $row['id']);
-                        while ($comment = $comments_result->fetch_assoc()):
-                    ?>
-                       <div class="comment" id="comment-<?php echo $comment['id']; ?>">
-                            <p><strong><?php echo $comment['fname'] . " " . $comment['lname']; ?>:</strong> 
-                                 <span class="comment-text" id="short-comment-<?php echo $comment['id']; ?>"><?php echo htmlspecialchars($comment['short_comment']); ?></span>
-                            </p>
-                            <p><span class="comment-text" id="long-comment-<?php echo $comment['id']; ?>"><?php echo htmlspecialchars($comment['long_comment']); ?></span></p>
-                            <p><small>Posted on: <?php echo $comment['posted_date']; ?></small></p>
+                <?php
+// Fetch comments for the current issue using PDO
+$stmt = $pdo->prepare("SELECT c.*, p.fname, p.lname FROM iss_comments c 
+                        INNER JOIN iss_persons p ON c.per_id = p.id 
+                        WHERE c.iss_id = :iss_id");
+$stmt->bindValue(':iss_id', $row['id'], PDO::PARAM_INT); // Bind the issue ID dynamically
+$stmt->execute();
 
-                            
-                        
-                        <?php
-// Before your main HTML, near the top of the PHP section
-$editing_comment_id = isset($_POST['edit_comment']) ? intval($_POST['edit_comment']) : null;
+while ($comment = $stmt->fetch(PDO::FETCH_ASSOC)):
 ?>
+   <div class="comment" id="comment-<?php echo $comment['id']; ?>">
+        <p><strong><?php echo $comment['fname'] . " " . $comment['lname']; ?>:</strong> 
+             <span class="comment-text" id="short-comment-<?php echo $comment['id']; ?>"><?php echo htmlspecialchars($comment['short_comment']); ?></span>
+        </p>
+        <p><span class="comment-text" id="long-comment-<?php echo $comment['id']; ?>"><?php echo htmlspecialchars($comment['long_comment']); ?></span></p>
+        <p><small>Posted on: <?php echo $comment['posted_date']; ?></small></p>
 
-<?php if ($comment['per_id'] == $_SESSION['user_id']): ?>
-    <!-- Edit Button as form -->
-    <form method="POST" style="display:inline;">
-        <input type="hidden" name="iss_id" value="<?php echo $row['id']; ?>">
-        <input type="hidden" name="open_modal_id" value="<?php echo $row['id']; ?>">
-        <button type="submit" name="edit_comment" value="<?php echo $comment['id']; ?>" class="btn btn-warning btn-sm">Edit</button>
-    </form>
+        <?php
+        // Before your main HTML, near the top of the PHP section
+        $editing_comment_id = isset($_POST['edit_comment']) ? intval($_POST['edit_comment']) : null;
+        ?>
 
-    <!-- Delete Button -->
-    <a href="issue_list.php?delete_comment_id=<?php echo $comment['id']; ?>" class="btn btn-danger btn-sm">Delete</a>
+        <?php if ($comment['per_id'] == $_SESSION['user_id']): ?>
+            <!-- Edit Button as form -->
+            <form method="POST" style="display:inline;">
+                <input type="hidden" name="iss_id" value="<?php echo $row['id']; ?>">
+                <input type="hidden" name="open_modal_id" value="<?php echo $row['id']; ?>">
+                <button type="submit" name="edit_comment" value="<?php echo $comment['id']; ?>" class="btn btn-warning btn-sm">Edit</button>
+            </form>
 
-    <!-- Only show the edit form if this comment is being edited -->
-    <?php if ($editing_comment_id == $comment['id']): ?>
-        <form action="issue_list.php" method="POST" style="margin-top:10px;">
-            <input type="hidden" name="comment_id" value="<?php echo $comment['id']; ?>">
-            <input type="hidden" name="iss_id" value="<?php echo $row['id']; ?>">
+            <!-- Delete Button -->
+            <a href="issue_list.php?delete_comment_id=<?php echo $comment['id']; ?>" class="btn btn-danger btn-sm">Delete</a>
 
-            <div class="form-group">
-                <label for="short_comment">Short Comment:</label>
-                <input type="text" class="form-control" name="short_comment" value="<?php echo htmlspecialchars($comment['short_comment']); ?>" required>
-            </div>
-            <div class="form-group">
-                <label for="long_comment">Long Comment:</label>
-                <textarea class="form-control" name="long_comment" required><?php echo htmlspecialchars($comment['long_comment']); ?></textarea>
-            </div>
+            <!-- Only show the edit form if this comment is being edited -->
+            <?php if ($editing_comment_id == $comment['id']): ?>
+                <form action="issue_list.php" method="POST" style="margin-top:10px;">
+                    <input type="hidden" name="comment_id" value="<?php echo $comment['id']; ?>">
+                    <input type="hidden" name="iss_id" value="<?php echo $row['id']; ?>">
 
-            <button type="submit" name="edit_comment_submit" class="btn btn-primary">Save Changes</button>
-            <a href="issue_list.php?id=<?php echo $row['id']; ?>" class="btn btn-secondary">Cancel</a>
-        </form>
-    <?php endif; ?>
-<?php endif; ?>
-                        </div>
+                    <div class="form-group">
+                        <label for="short_comment">Title:</label>
+                        <input type="text" class="form-control" name="short_comment" value="<?php echo htmlspecialchars($comment['short_comment']); ?>" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="long_comment">Body:</label>
+                        <textarea class="form-control" name="long_comment" required><?php echo htmlspecialchars($comment['long_comment']); ?></textarea>
+                    </div>
 
-                    <?php endwhile; ?>
+                    <button type="submit" name="edit_comment_submit" class="btn btn-primary">Save Changes</button>
+                    <a href="issue_list.php?id=<?php echo $row['id']; ?>" class="btn btn-secondary">Cancel</a>
+                </form>
+            <?php endif; ?>
+        <?php endif; ?>
+   </div>
+<?php endwhile; ?>
+
                 </div>
 
                 <!-- Add Comment Form -->
@@ -359,11 +364,11 @@ $editing_comment_id = isset($_POST['edit_comment']) ? intval($_POST['edit_commen
                 <form action="issue_list.php" method="POST">
                     <input type="hidden" name="iss_id" value="<?php echo $row['id']; ?>">
                     <div class="form-group">
-                        <label for="short_comment">Short Comment:</label>
+                        <label for="short_comment">Title:</label>
                         <input type="text" class="form-control" name="short_comment" placeholder="Enter short comment" required>
                     </div>
                     <div class="form-group">
-                        <label for="long_comment">Long Comment:</label>
+                        <label for="long_comment">Body:</label>
                         <textarea class="form-control" name="long_comment" placeholder="Enter long comment" required></textarea>
                     </div>
                     <button type="submit" name="add_comment" class="btn btn-primary">Add Comment</button>
@@ -457,16 +462,18 @@ $editing_comment_id = isset($_POST['edit_comment']) ? intval($_POST['edit_commen
                     <div class="form-group">
                         <label for="assigned_person">Assigned Person:</label>
                         <select class="form-control" name="assigned_person">
-                            <?php
-                            // Query to get all persons for the dropdown
-                            $persons_result = $conn->query("SELECT id, fname, lname FROM iss_persons");
+                        <?php
+// Query to get all persons for the dropdown
+$stmt = $pdo->prepare("SELECT id, fname, lname FROM iss_persons");
+$stmt->execute();
 
-                            // Populate the dropdown with all persons
-                            while ($person = $persons_result->fetch_assoc()) {
-                                $selected = $row['per_id'] == $person['id'] ? 'selected' : '';
-                                echo '<option value="' . $person['id'] . '" ' . $selected . '>' . $person['fname'] . ' ' . $person['lname'] . '</option>';
-                            }
-                            ?>
+// Populate the dropdown with all persons
+while ($person = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    $selected = $row['per_id'] == $person['id'] ? 'selected' : '';
+    echo '<option value="' . $person['id'] . '" ' . $selected . '>' . $person['fname'] . ' ' . $person['lname'] . '</option>';
+}
+?>
+
                         </select>
                     </div>
 
@@ -512,9 +519,28 @@ $editing_comment_id = isset($_POST['edit_comment']) ? intval($_POST['edit_commen
                 </div>
             </div>
 
-        <?php endwhile; ?>
+        <?php endforeach; ?>
     </tbody>
 </table>
+
+<!-- Pagination Links -->
+<div class="pagination">
+    <ul class="pagination">
+        <?php if ($page > 1): ?>
+            <li class="page-item"><a class="page-link" href="?page=<?php echo $page - 1; ?>&issue_filter=<?php echo $filter; ?>">Previous</a></li>
+        <?php endif; ?>
+
+        <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+            <li class="page-item <?php echo $i == $page ? 'active' : ''; ?>">
+                <a class="page-link" href="?page=<?php echo $i; ?>&issue_filter=<?php echo $filter; ?>"><?php echo $i; ?></a>
+            </li>
+        <?php endfor; ?>
+
+        <?php if ($page < $total_pages): ?>
+            <li class="page-item"><a class="page-link" href="?page=<?php echo $page + 1; ?>&issue_filter=<?php echo $filter; ?>">Next</a></li>
+        <?php endif; ?>
+    </ul>
+</div>
 
 <!-- Include jQuery and Bootstrap JS -->
 <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
@@ -523,7 +549,4 @@ $editing_comment_id = isset($_POST['edit_comment']) ? intval($_POST['edit_commen
 </body>
 </html>
 
-<?php
-// Close connection
-$conn->close();
-?>
+
