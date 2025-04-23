@@ -304,15 +304,20 @@ $issues = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <?php
 // Fetch comments for the current issue using PDO
 $stmt = $pdo->prepare("SELECT c.*, p.fname, p.lname FROM iss_comments c 
-                        INNER JOIN iss_persons p ON c.per_id = p.id 
+                        LEFT JOIN iss_persons p ON c.per_id = p.id 
                         WHERE c.iss_id = :iss_id");
 $stmt->bindValue(':iss_id', $row['id'], PDO::PARAM_INT); // Bind the issue ID dynamically
 $stmt->execute();
 
 while ($comment = $stmt->fetch(PDO::FETCH_ASSOC)):
 ?>
+    <?php $name = ($comment['fname'] && $comment['lname']) 
+    ? $comment['fname'] . " " . $comment['lname'] 
+    : "Deleted User";
+
+?>
    <div class="comment" id="comment-<?php echo $comment['id']; ?>">
-        <p><strong><?php echo $comment['fname'] . " " . $comment['lname']; ?>:</strong> 
+        <p><strong><?php echo htmlspecialchars($name); ?>:</strong> 
              <span class="comment-text" id="short-comment-<?php echo $comment['id']; ?>"><?php echo htmlspecialchars($comment['short_comment']); ?></span>
         </p>
         <p><span class="comment-text" id="long-comment-<?php echo $comment['id']; ?>"><?php echo htmlspecialchars($comment['long_comment']); ?></span></p>

@@ -109,18 +109,27 @@ try {
             </tr>
         </thead>
         <tbody>
-            <?php while ($row = $result->fetch(PDO::FETCH_ASSOC)): ?>
+            <?php while ($row = $result->fetch(PDO::FETCH_ASSOC)): 
+                
+                // checking if name exists for user, puts deleted user if user DNE anymore 
+                $name = ($row['fname'] && $row['lname']) 
+                ? htmlspecialchars($row['fname'] . ' ' . $row['lname']) 
+                : "Deleted User";
+                
+                ?>
                 <tr>
                     <td><?php echo $row['comment_id']; ?></td>
                     <td><?php echo $row['issue_title']; ?></td>
-                    <td><?php echo $row['fname'] . ' ' . $row['lname']; ?></td>
+                    <td><?php echo $name; ?></td>
                     <td><?php echo $row['short_comment']; ?></td>
                     <td><?php echo $row['long_comment']; ?></td>
                     <td><?php echo $row['posted_date']; ?></td>
                     <td>
+
+                    <!-- View Button -->
+                    <button class="btn btn-info" data-toggle="modal" data-target="#viewModal<?php echo $row['comment_id']; ?>">View</button>
                         <?php if ($_SESSION['admin'] == 'Y' || $_SESSION['user_id'] == $row['per_id']) { ?>
-                            <!-- View Button -->
-                            <button class="btn btn-info" data-toggle="modal" data-target="#viewModal<?php echo $row['comment_id']; ?>">View</button>
+                            
 
                             <!-- Edit Button -->
                             <button class="btn btn-warning" data-toggle="modal" data-target="#editModal<?php echo $row['comment_id']; ?>">Edit</button>
@@ -143,7 +152,7 @@ try {
                             </div>
                             <div class="modal-body">
                                 <p><strong>Issue Title:</strong> <?php echo $row['issue_title']; ?></p>
-                                <p><strong>Commented By:</strong> <?php echo $row['fname'] . ' ' . $row['lname']; ?></p>
+                                <p><strong>Commented By:</strong> <?php echo $name; ?></p>
                                 <p><strong>Short Comment:</strong> <?php echo $row['short_comment']; ?></p>
                                 <p><strong>Long Comment:</strong> <?php echo $row['long_comment']; ?></p>
                                 <p><strong>Posted Date:</strong> <?php echo $row['posted_date']; ?></p>

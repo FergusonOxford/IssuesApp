@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 
     // Prepare and execute the query to check if the email exists
-    $sql = "SELECT id, pwd_hash, pwd_salt, `admin` FROM iss_persons WHERE email = ?";
+    $sql = "SELECT id, pwd_hash, pwd_salt, `admin`, fname, lname FROM iss_persons WHERE email = ?";
     $stmt = $conn->prepare($sql);
     $stmt->execute([$email]);
 

@@ -25,8 +25,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_person'])) {
     $stmt = $pdo->prepare("DELETE FROM iss_persons WHERE id = ?");
     $stmt->execute([$delete_person_id]);
 
-    header("Location: persons_list.php");
-    exit();
+
+    if($user_id == $delete_person_id)
+    {
+        // Destroy the session to log the user out
+        session_destroy();
+
+        header("Location: login.php");
+        exit();
+    }
+    else
+    {
+        header("Location: persons_list.php");
+        exit();
+    }
+   
 }
 
 // Update person logic
@@ -39,6 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_person'])) {
     $admin  = $_SESSION['admin'];
 
     $user_id = $_SESSION['user_id'];
+    $admin_flag = ($admin === 'Y' && isset($_POST['admin'])) ? $_POST['admin'] : null; // Make sure this is coming from a form input if admin editing
 
     // Users can only edit their own info unless they are admin
     if ($admin !== 'Y' && $user_id != $id) {
@@ -46,14 +60,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_person'])) {
         exit();
     }
 
-    if ($admin === 'Y') {
-        $admin_flag = $_POST['admin']; // Make sure this is coming from a form input if admin editing
-        $stmt = $pdo->prepare("UPDATE iss_persons SET fname = ?, lname = ?, mobile = ?, email = ?, `admin` = ? WHERE id = ?");
-        $stmt->execute([$fname, $lname, $mobile, $email, $admin_flag, $id]);
-    } else {
-        $stmt = $pdo->prepare("UPDATE iss_persons SET fname = ?, lname = ?, mobile = ?, email = ? WHERE id = ?");
-        $stmt->execute([$fname, $lname, $mobile, $email, $id]);
+    // Handle password update
+   
+    $fields = [
+        "fname = ?",
+        "lname = ?",
+        "mobile = ?",
+        "email = ?"
+    ];
+    $params = [$fname, $lname, $mobile, $email];
+
+    if (!empty($_POST['new_password'])) {
+        $new_password = $_POST['new_password'];
+        $new_salt = bin2hex(random_bytes(16));
+        $hashed_password = hash('md5', $new_password . $new_salt);
+        $fields[] = "pwd_hash = ?";
+        $fields[] = "pwd_salt = ?";
+        $params[] = $hashed_password;
+        $params[] = $new_salt;
     }
+    
+
+    if ($admin === 'Y') {
+      
+        $fields[] = "`admin` = ?";
+        $params[] = $_POST['admin'];
+
+        
+    }
+
+    $params[] = $id;
+    $query = "UPDATE iss_persons SET " . implode(", ", $fields) . " WHERE id = ?";
+    $stmt = $pdo->prepare($query);
+    $stmt->execute($params);
 
     header("Location: persons_list.php");
     exit();
@@ -198,6 +237,14 @@ Database::disconnect();
                                         <option value="N" <?php echo $row['admin'] == 'N'? 'selected' : ''; ?>>No</option>
                                     </select>
                                 </div>
+                                <?php if ($_SESSION['admin'] == 'Y' || $_SESSION['user_id'] == $row['id']) { ?>
+                                    <div class="form-group">
+                                    <label for="new_password">New Password:</label>
+                                    <input type="password" class="form-control" name="new_password" placeholder="Leave blank to keep current password">
+                                    </div>
+                                <?php } ?>
+
+
                                 <button type="submit" name="update_person" class="btn btn-primary">Save Changes</button>
                             </form>
                         </div>
