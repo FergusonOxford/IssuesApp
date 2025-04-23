@@ -9,11 +9,12 @@ $success = '';
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $fname = trim($_POST['fname']);
     $lname = trim($_POST['lname']);
+    $mobile = trim($_POST['mobile']);
     $email = trim($_POST['email']);
     $password = trim($_POST['password']);
     $confirm_password = trim($_POST['confirm_password']);
 
-    if (!empty($fname) && !empty($lname) && !empty($email) && !empty($password) && !empty($confirm_password)) {
+    if (!empty($fname) && !empty($lname) && !empty($mobile) && !empty($email) && !empty($password) && !empty($confirm_password)) {
         if (!preg_match('/@svsu\.edu$/i', $email)) {
             $error = "You must register with an @svsu.edu email address.";
         } elseif ($password !== $confirm_password) {
@@ -30,10 +31,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $pwd_hash = md5($password . $salt);
                 $token = bin2hex(random_bytes(16)); // Email verification token
 
-                $stmt = $pdo->prepare("INSERT INTO iss_persons (fname, lname, email, pwd_hash, pwd_salt, `admin`) 
-                                       VALUES (:fname, :lname, :email, :pwd_hash, :pwd_salt, 'N')");
+                $stmt = $pdo->prepare("INSERT INTO iss_persons (fname, lname, mobile, email, pwd_hash, pwd_salt, `admin`) 
+                                       VALUES (:fname, :lname, :mobile, :email, :pwd_hash, :pwd_salt, 'N')");
                 $stmt->bindParam(':fname', $fname);
                 $stmt->bindParam(':lname', $lname);
+                $stmt->bindParam(':mobile', $mobile);
                 $stmt->bindParam(':email', $email);
                 $stmt->bindParam(':pwd_hash', $pwd_hash);
                 $stmt->bindParam(':pwd_salt', $salt);
